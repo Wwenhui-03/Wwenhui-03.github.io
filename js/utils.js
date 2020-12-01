@@ -1,64 +1,159 @@
-HTMLElement.prototype.wrap = function(wrapper) {
-  this.parentNode.insertBefore(wrapper, this);
-  this.parentNode.removeChild(this);
-  wrapper.appendChild(this);
-};
+(function ($) {
+  "use strict";
 
-Yun.utils = {
-  wrapTable: () => {
-    document.querySelectorAll("table").forEach((el) => {
-      const container = document.createElement("div");
-      container.className = "table-container";
-      el.wrap(container);
-    });
-  },
-
-  /**
-   * click btn to copy codeblock
-   */
-  insertCopyCodeBtn: () => {
-    const codeblocks = document.querySelectorAll("pre[class*='language-']");
-
-    codeblocks.forEach((codeblock) => {
-      if (!CONFIG.copycode) return;
-      codeblock.insertAdjacentHTML(
-        "beforeend",
-        '<div class="copy-btn"><svg class="icon"><use xlink:href="#icon-file-copy-line" aria-label="copy"></use></svg></div>'
+  ZHAOO.utils = {
+    debounce: function (func, wait, immediate) {
+      var timeout;
+      return function () {
+        var context = this;
+        var args = arguments;
+        timeout && clearTimeout(timeout);
+        if (immediate) {
+          var callNow = !timeout;
+          timeout = setTimeout(function () {
+            timeout = null;
+          }, wait);
+          if (callNow) func.apply(context, args);
+        } else {
+          timeout = setTimeout(function () {
+            func.apply(context, args);
+          }, wait);
+        }
+      }
+    },
+    throttle: function (func, wait, options) {
+      var timeout, context, args;
+      var previous = 0;
+      if (!options) options = {};
+      var later = function () {
+        previous = options.leading === false ? 0 : new Date().getTime();
+        timeout = null;
+        func.apply(context, args);
+        if (!timeout) context = args = null;
+      }
+      var throttled = function () {
+        var now = new Date().getTime();
+        if (!previous && options.leading === false) previous = now;
+        var remaining = wait - (now - previous);
+        context = this;
+        args = arguments;
+        if (remaining <= 0 || remaining > wait) {
+          if (timeout) {
+            clearTimeout(timeout);
+            timeout = null;
+          }
+          previous = now;
+          func.apply(context, args);
+          if (!timeout) context = args = null;
+        } else if (!timeout && options.trailing !== false) {
+          timeout = setTimeout(later, remaining);
+        }
+      }
+      return throttled;
+    },
+    hasMobileUA: function () {
+      var nav = window.navigator;
+      var ua = nav.userAgent;
+      var pa = /iPad|iPhone|Android|Opera Mini|BlackBerry|webOS|UCWEB|Blazer|PSP|IEMobile|Symbian/g;
+      return pa.test(ua);
+    },
+    isTablet: function () {
+      return (
+        window.screen.width > 767 &&
+        window.screen.width < 992 &&
+        this.hasMobileUA()
       );
-      const copyBtn = codeblock.querySelector(".copy-btn");
-      copyBtn.addEventListener("click", () => {
-        const lines =
-          codeblock.querySelector("code[class*='language-']") ||
-          codeblock.querySelector(".token");
-        const code = lines.innerText;
-        const ta = document.createElement("textarea");
-        ta.style.top = window.scrollY + "px"; // Prevent page scrolling
-        ta.style.position = "absolute";
-        ta.style.opacity = "0";
-        ta.readOnly = true;
-        ta.value = code;
-        document.body.append(ta);
-        ta.select();
-        ta.setSelectionRange(0, code.length);
-        ta.readOnly = false;
-        // copy success
-        const result = document.execCommand("copy");
-        const iconName = result ? "#icon-check-line" : "#icon-timer-line";
-        const iconSvg = copyBtn.querySelector("svg use");
-        iconSvg.setAttribute("xlink:href", iconName);
-        iconSvg.setAttribute("color", result ? "green" : "red");
+    },
+    isMobile: function () {
+      return window.screen.width < 767 && this.hasMobileUA();
+    },
+    isDesktop: function () {
+      return !this.isTablet() && !this.isMobile();
+    },
+    isDuringDate: function (beginDateStr, endDateStr) {
+      var curDate = new Date(),
+        beginDate = new Date(beginDateStr),
+        endDate = new Date(endDateStr);
+      if (curDate >= beginDate && curDate <= endDate) {
+        return true;
+      }
+      return false;
+    }
+  }
 
-        ta.blur(); // For iOS
-        copyBtn.blur();
-        document.body.removeChild(ta);
+  ZHAOO.zui = {
+    message: function ({ text, type, delay }) {
+      var message = '<div class="zui-message ' + (type || "info") + '"><p>' + text + '</p></div>';
+      $("body").append(message);
+      var e = $(".zui-message");
+      e.ready(function () {
+        e.addClass("in");
+        setTimeout(function () {
+          e.removeClass("in");
+          e.on("transitionend webkitTransitionEnd", function () {
+            $(this).remove();
+          });
+        }, delay || 3000);
       });
-      codeblock.addEventListener("mouseleave", () => {
-        setTimeout(() => {
-          const iconSvg = copyBtn.querySelector("svg use");
-          iconSvg.setAttribute("xlink:href", "#icon-file-copy-line");
-          iconSvg.setAttribute("color", "gray");
-        }, 200);
+    },
+    notification: function ({ title, content, type, delay }) {
+      var storage = JSON.parse(localStorage.getItem("notification-closed"));
+      if (storage && storage.indexOf(title) >= 0) return;
+      var notification = '<div class="zui-notification ' + (type || "info") + '"><span>' + title + '</span><p>' + content + '</p><i class="j-notification-close iconfont iconbaseline-close-px"></i></div>';
+      $("body").append(notification);
+      var e = $(".zui-notification");
+      var close = $(".j-notification-close");
+      e.ready(function () {
+        e.addClass("in");
+        setTimeout(function () {
+          e.removeClass("in");
+          e.on("transitionend webkitTransitionEnd", function () {
+            $(this).remove();
+          });
+        }, delay || 3000);
+        close.on("click", function () {
+          e.removeClass("in");
+          if (storage) {
+            (storage.indexOf(title) < 0) && localStorage.setItem("notification-closed", JSON.stringify(storage.concat(title)));
+          } else {
+            localStorage.setItem("notification-closed", JSON.stringify([title]));
+          }
+        });
       });
-    });
-  },
-};
+    }
+  }
+
+})(jQuery);
+
+class AsyncLimit {
+  constructor(limit) {
+    this.limit = Number(limit) || 2;
+    this.pool = [];
+    this.current = 0;
+  }
+
+  async run(fn) {
+    if (!fn || typeof fn !== 'function') {
+      throw new Error('Function error.');
+    }
+    if (this.current >= this.limit) {
+      await new Promise(resolve => this.pool.push(resolve));
+    }
+    return this._handleRun(fn);
+  }
+
+  async _handleRun(fn) {
+    this.current++;
+    try {
+      return await fn();
+    } catch (err) {
+      return Promise.reject(err);
+    } finally {
+      this.current--;
+      if (this.pool.length) {
+        this.pool[0]();
+        this.pool.shift();
+      }
+    }
+  }
+}
